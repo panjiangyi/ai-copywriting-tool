@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback, useEffect } from "react"
+import { useState, useCallback, useEffect, useRef } from "react"
 import { Header } from "@/components/ai-copy/header"
 import { HeroSection } from "@/components/ai-copy/hero-section"
 import { InputPanel } from "@/components/ai-copy/input-panel"
@@ -83,12 +83,14 @@ export default function Home() {
     wordCount: "400 字左右",
     count: 1
   })
+  const lastDocumentRef = useRef("")
 
-  const handleGenerate = useCallback(async () => {
-    if (formData.document.length < 30) {
+  const handleGenerate = useCallback(async (document: string) => {
+    if (document.length < 30) {
       setError("请输入至少30字的行业文案撰写文档")
       return
     }
+    lastDocumentRef.current = document
 
     setState("loading")
     setError(null)
@@ -105,7 +107,7 @@ export default function Home() {
     }, 250)
 
     try {
-      const response = await generateCopy({ ...formData, provider })
+      const response = await generateCopy({ ...formData, document, provider })
       clearInterval(progressTimer)
       setCurrentStep(5)
       setProgress(100)
@@ -119,7 +121,7 @@ export default function Home() {
   }, [formData, provider])
 
   const handleRegenerate = useCallback(() => {
-    handleGenerate()
+    handleGenerate(lastDocumentRef.current)
   }, [handleGenerate])
 
   return (
