@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useEffect } from "react"
 import { Header } from "@/components/ai-copy/header"
 import { HeroSection } from "@/components/ai-copy/hero-section"
 import { InputPanel } from "@/components/ai-copy/input-panel"
@@ -8,18 +8,25 @@ import { ProcessPanel } from "@/components/ai-copy/process-panel"
 import { MetricsPanel } from "@/components/ai-copy/metrics-panel"
 import { ResultPanel } from "@/components/ai-copy/result-panel"
 import { generateCopy } from "@/lib/generate-client"
-import type { GenerateRequest, GenerateResponse, GenerateState } from "@/lib/ai-copy"
+import type { AIProvider, GenerateRequest, GenerateResponse, GenerateState } from "@/lib/ai-copy"
 
-const EXPECTED_GENERATION_MS = 60_000
+const PROVIDER_STORAGE_KEY = "ai-copy:provider"
+const DEFAULT_PROVIDER: AIProvider = "claude"
 
-function getLoadingProgress(elapsedMs: number) {
+const EXPECTED_MS_BY_PROVIDER: Record<AIProvider, number> = {
+  openclaw: 60_000,
+  claude: 25_000,
+}
+
+function getLoadingProgress(elapsedMs: number, expectedMs: number) {
+  const scale = expectedMs / 60_000
   const checkpoints = [
     { time: 0, progress: 3 },
-    { time: 8_000, progress: 16 },
-    { time: 18_000, progress: 36 },
-    { time: 32_000, progress: 58 },
-    { time: 52_000, progress: 88 },
-    { time: EXPECTED_GENERATION_MS, progress: 97 },
+    { time: 8_000 * scale, progress: 16 },
+    { time: 18_000 * scale, progress: 36 },
+    { time: 32_000 * scale, progress: 58 },
+    { time: 52_000 * scale, progress: 88 },
+    { time: expectedMs, progress: 97 },
   ]
 
   for (let index = 1; index < checkpoints.length; index++) {
@@ -32,15 +39,16 @@ function getLoadingProgress(elapsedMs: number) {
     }
   }
 
-  const overtimeMs = elapsedMs - EXPECTED_GENERATION_MS
-  return Math.min(98.5, 97 + overtimeMs / 30_000)
+  const overtimeMs = elapsedMs - expectedMs
+  return Math.min(98.5, 97 + overtimeMs / (expectedMs / 2))
 }
 
-function getLoadingStep(elapsedMs: number) {
-  if (elapsedMs < 8_000) return 0
-  if (elapsedMs < 18_000) return 1
-  if (elapsedMs < 32_000) return 2
-  if (elapsedMs < 52_000) return 3
+function getLoadingStep(elapsedMs: number, expectedMs: number) {
+  const scale = expectedMs / 60_000
+  if (elapsedMs < 8_000 * scale) return 0
+  if (elapsedMs < 18_000 * scale) return 1
+  if (elapsedMs < 32_000 * scale) return 2
+  if (elapsedMs < 52_000 * scale) return 3
   return 4
 }
 
@@ -50,7 +58,23 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null)
   const [currentStep, setCurrentStep] = useState(0)
   const [progress, setProgress] = useState(0)
-  
+  const [provider, setProvider] = useState<AIProvider>(DEFAULT_PROVIDER)
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const stored = window.localStorage.getItem(PROVIDER_STORAGE_KEY)
+    if (stored === "claude" || stored === "openclaw") {
+      setProvider(stored)
+    }
+  }, [])
+
+  const handleProviderChange = useCallback((next: AIProvider) => {
+    setProvider(next)
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(PROVIDER_STORAGE_KEY, next)
+    }
+  }, [])
+
   const [formData, setFormData] = useState<GenerateRequest>({
     document: "",
     industry: "体彩店店主",
@@ -73,14 +97,15 @@ export default function Home() {
     setResult(null)
 
     const startedAt = Date.now()
+    const expectedMs = EXPECTED_MS_BY_PROVIDER[provider]
     const progressTimer = setInterval(() => {
       const elapsedMs = Date.now() - startedAt
-      setCurrentStep(getLoadingStep(elapsedMs))
-      setProgress(getLoadingProgress(elapsedMs))
+      setCurrentStep(getLoadingStep(elapsedMs, expectedMs))
+      setProgress(getLoadingProgress(elapsedMs, expectedMs))
     }, 250)
 
     try {
-      const response = await generateCopy(formData)
+      const response = await generateCopy({ ...formData, provider })
       clearInterval(progressTimer)
       setCurrentStep(5)
       setProgress(100)
@@ -91,7 +116,7 @@ export default function Home() {
       setError(err instanceof Error ? err.message : "AI 服务暂时繁忙，请稍后再试")
       setState("error")
     }
-  }, [formData])
+  }, [formData, provider])
 
   const handleRegenerate = useCallback(() => {
     handleGenerate()
@@ -99,10 +124,14 @@ export default function Home() {
 
   return (
     <main className="min-h-screen">
-      <Header />
+      <Header
+        provider={provider}
+        onProviderChange={handleProviderChange}
+        disabled={state === "loading"}
+      />
       <div className="max-w-6xl mx-auto px-4 py-8 space-y-8">
         <HeroSection />
-        
+
         <InputPanel
           formData={formData}
           setFormData={setFormData}
@@ -127,6 +156,7 @@ export default function Home() {
               totalWords={result.totalWords}
               titleCount={result.titleCount}
               duration={result.duration}
+              provider={result.provider}
             />
             <ResultPanel
               result={result}

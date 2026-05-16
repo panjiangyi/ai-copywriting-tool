@@ -1,14 +1,21 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Target, FileText, Heading, Clock } from "lucide-react"
+import { Target, FileText, Heading, Clock, Cpu } from "lucide-react"
 import { cn } from "@/lib/utils"
+import type { AIProvider } from "@/lib/ai-copy"
 
 interface MetricsPanelProps {
   matchScore: number
   totalWords: number
   titleCount: number
   duration: number
+  provider?: AIProvider
+}
+
+const providerLabel: Record<AIProvider, string> = {
+  claude: "Claude Code",
+  openclaw: "OpenClaw",
 }
 
 function AnimatedNumber({ value, suffix = "", decimals = 0 }: { value: number; suffix?: string; decimals?: number }) {
@@ -86,12 +93,21 @@ const metrics = [
   },
 ]
 
-export function MetricsPanel({ matchScore, totalWords, titleCount, duration }: MetricsPanelProps) {
+export function MetricsPanel({ matchScore, totalWords, titleCount, duration, provider }: MetricsPanelProps) {
   const values: Record<string, number> = { matchScore, totalWords, titleCount, duration }
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-      {metrics.map((metric, index) => {
+    <div className="space-y-3">
+      {provider && (
+        <div className="flex justify-end">
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-accent/10 text-accent border border-accent/20">
+            <Cpu className="w-3 h-3" />
+            本次由 {providerLabel[provider]} 生成
+          </span>
+        </div>
+      )}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {metrics.map((metric, index) => {
         const Icon = metric.icon
         return (
           <div
@@ -118,6 +134,7 @@ export function MetricsPanel({ matchScore, totalWords, titleCount, duration }: M
           </div>
         )
       })}
+      </div>
     </div>
   )
 }

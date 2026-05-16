@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 import {
+  type AIProvider,
   type CopyVariant,
   type GeneratedCopy,
   type GeneratedCopySet,
@@ -9,7 +10,9 @@ import {
   generatedCopySetSchema,
   generateRequestSchema,
 } from "@/lib/ai-copy"
-import { callOpenClaw, extractJsonBlock, OpenClawError } from "@/lib/openclaw"
+import { extractJsonBlock } from "@/lib/openclaw"
+import { callAI, getAIErrorType } from "@/lib/ai-provider"
+import { AIError } from "@/lib/claude-cli"
 
 function buildSystemPrompt() {
   return [
@@ -89,16 +92,21 @@ function parseGeneratedCopy(rawContent: string) {
   }
 }
 
-async function parseOrRepairGeneratedCopy(input: GenerateRequest, rawContent: string) {
+async function parseOrRepairGeneratedCopy(
+  input: GenerateRequest,
+  rawContent: string,
+  provider?: AIProvider
+) {
   const parsed = parseGeneratedCopy(rawContent)
   if (parsed && parsed.copies.length >= input.count) {
     return normalizeGeneratedCopy(parsed, input.count)
   }
 
-  const repaired = await callOpenClaw({
+  const repaired = await callAI({
     systemPrompt: buildSystemPrompt(),
     userPrompt: buildRepairPrompt(input, rawContent),
     maxTokens: 1400,
+    provider,
   })
 
   const repairedParsed = parseGeneratedCopy(repaired.content)
@@ -106,7 +114,7 @@ async function parseOrRepairGeneratedCopy(input: GenerateRequest, rawContent: st
     return normalizeGeneratedCopy(repairedParsed, input.count)
   }
 
-  throw new OpenClawError("AI returned invalid JSON after repair", "invalid_response")
+  throw new AIError("AI returned invalid JSON after repair", "invalid_response")
 }
 
 function normalizeLegacyCopy(copy: GeneratedCopy): GeneratedCopySet {
@@ -163,23 +171,24 @@ function formatError(error: unknown) {
     }
   }
 
-  if (error instanceof OpenClawError) {
-    if (error.type === "auth") {
+  const aiErrorType = getAIErrorType(error)
+  if (aiErrorType) {
+    if (aiErrorType === "auth") {
       return { status: 502, message: "AI 服务鉴权失败，请检查后端配置" }
     }
-    if (error.type === "rate_limit") {
+    if (aiErrorType === "rate_limit") {
       return { status: 429, message: "AI 服务繁忙，请稍后再试" }
     }
-    if (error.type === "network") {
-      return { status: 502, message: "AI 服务连接失败，请检查 OpenClaw 网关" }
+    if (aiErrorType === "network") {
+      return { status: 502, message: "AI 服务连接失败，请检查 AI 后端配置" }
     }
-    if (error.type === "server") {
+    if (aiErrorType === "server") {
       return { status: 502, message: "AI 服务暂时不可用，请稍后再试" }
     }
-    if (error.type === "invalid_response") {
+    if (aiErrorType === "invalid_response") {
       return { status: 502, message: "AI 返回格式异常，请稍后再试" }
     }
-    if (error.type === "config") {
+    if (aiErrorType === "config") {
       return { status: 500, message: "AI 服务配置缺失，请检查环境变量" }
     }
   }
@@ -192,12 +201,13 @@ export async function POST(request: Request) {
     const body = generateRequestSchema.parse(await request.json())
     const startedAt = Date.now()
 
-    const response = await callOpenClaw({
+    const response = await callAI({
       systemPrompt: buildSystemPrompt(),
       userPrompt: buildUserPrompt(body),
+      provider: body.provider,
     })
 
-    const parsed = await parseOrRepairGeneratedCopy(body, response.content)
+    const parsed = await parseOrRepairGeneratedCopy(body, response.content, response.provider)
     const titles = parsed.copies.map((copy) => copy.title)
     const content = combineContent(parsed.copies)
     const totalWords = parsed.copies.reduce(
@@ -219,6 +229,7 @@ export async function POST(request: Request) {
       suggestions: combineSuggestions(parsed.copies),
       copies: parsed.copies,
       usage: response.usage,
+      provider: response.provider,
     })
   } catch (error) {
     console.error("[api/generate]", error)

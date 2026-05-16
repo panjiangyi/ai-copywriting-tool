@@ -1,5 +1,8 @@
 import { z } from "zod"
 
+export const aiProviderSchema = z.enum(["claude", "openclaw"])
+export type AIProvider = z.infer<typeof aiProviderSchema>
+
 export const generateRequestSchema = z.object({
   document: z.string().min(30, "请输入至少30字的行业文案撰写文档"),
   industry: z.string().min(1, "请选择目标行业"),
@@ -7,6 +10,7 @@ export const generateRequestSchema = z.object({
   styles: z.array(z.string()).min(1, "请至少选择一种文案风格"),
   wordCount: z.string().min(1, "请选择字数范围"),
   count: z.number().int().min(1).max(3),
+  provider: aiProviderSchema.optional(),
 })
 
 export const generatedCopySchema = z.object({
@@ -45,6 +49,7 @@ export const generateResponseSchema = generatedCopySchema.extend({
   titleCount: z.number().int().min(0),
   duration: z.number().min(0),
   copies: z.array(copyVariantSchema).min(1),
+  provider: aiProviderSchema.optional(),
 })
 
 export type GenerateRequest = z.infer<typeof generateRequestSchema>

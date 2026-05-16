@@ -1,6 +1,27 @@
-import { Sparkles, Cpu } from "lucide-react"
+"use client"
 
-export function Header() {
+import { Sparkles, Cpu } from "lucide-react"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import type { AIProvider } from "@/lib/ai-copy"
+
+interface HeaderProps {
+  provider: AIProvider
+  onProviderChange: (next: AIProvider) => void
+  disabled?: boolean
+}
+
+const providerOptions: { value: AIProvider; label: string }[] = [
+  { value: "claude", label: "Claude Code" },
+  { value: "openclaw", label: "OpenClaw" },
+]
+
+export function Header({ provider, onProviderChange, disabled }: HeaderProps) {
   return (
     <header className="border-b border-border/50 bg-card/50 backdrop-blur-sm sticky top-0 z-50">
       <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
@@ -18,8 +39,25 @@ export function Header() {
             </p>
           </div>
         </div>
-        
-        <div className="flex items-center gap-2">
+
+        <div className="flex items-center gap-3">
+          <Select
+            value={provider}
+            onValueChange={(value) => onProviderChange(value as AIProvider)}
+            disabled={disabled}
+          >
+            <SelectTrigger className="h-8 w-[148px] text-xs bg-secondary border-border text-foreground">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="bg-card border-border">
+              {providerOptions.map((option) => (
+                <SelectItem key={option.value} value={option.value} className="text-foreground text-xs">
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
           <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-primary/10 text-primary border border-primary/20">
             <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
             系统在线
