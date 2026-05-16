@@ -1,6 +1,6 @@
 "use client"
 
-import type { Dispatch, SetStateAction } from "react"
+import { useEffect, useState, type Dispatch, type SetStateAction } from "react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
@@ -13,6 +13,93 @@ import {
 } from "@/components/ui/select"
 import { Zap, AlertCircle, FileText } from "lucide-react"
 import type { GenerateRequest } from "@/lib/ai-copy"
+
+type SectionKey =
+  | "business"
+  | "customer"
+  | "painPoints"
+  | "advantages"
+  | "scripts"
+  | "direction"
+  | "notes"
+
+interface SectionConfig {
+  key: SectionKey
+  label: string
+  placeholder: string
+  rows: number
+  fullWidth?: boolean
+}
+
+const sections: SectionConfig[] = [
+  {
+    key: "business",
+    label: "业务介绍",
+    placeholder: "例：我是做装修设计的，主要服务准备装修新房的业主。",
+    rows: 3,
+  },
+  {
+    key: "customer",
+    label: "目标客户",
+    placeholder: "例：预算 30-50 万、首次装修的城市白领业主。",
+    rows: 3,
+  },
+  {
+    key: "painPoints",
+    label: "客户痛点",
+    placeholder: "例：预算超支、防水电路做不好、入住后问题多。",
+    rows: 3,
+  },
+  {
+    key: "advantages",
+    label: "产品/服务优势",
+    placeholder: "例：施工透明、材料可查、工地全程巡检。",
+    rows: 3,
+  },
+  {
+    key: "scripts",
+    label: "成交话术或案例",
+    placeholder: "例：上周一个客户因为我们的全程巡检，避免了 3 万的返工损失。",
+    rows: 3,
+  },
+  {
+    key: "direction",
+    label: "希望生成的文案方向",
+    placeholder: "例：适合抖音口播的获客文案，强调专业感与信任感。",
+    rows: 3,
+  },
+  {
+    key: "notes",
+    label: "补充信息（可选）",
+    placeholder: "其他想让 AI 知道的内容，比如品牌口号、禁用词、参考样稿等。",
+    rows: 5,
+    fullWidth: true,
+  },
+]
+
+type SectionState = Record<SectionKey, string>
+
+const emptySections: SectionState = {
+  business: "",
+  customer: "",
+  painPoints: "",
+  advantages: "",
+  scripts: "",
+  direction: "",
+  notes: "",
+}
+
+function assembleDocument(state: SectionState): string {
+  return sections
+    .map((section) => {
+      const value = state[section.key].trim()
+      if (!value) return null
+      const label = section.key === "notes" ? "补充信息" : section.label
+      return `【${label}】${value}`
+    })
+    .filter(Boolean)
+    .join("\n\n")
+}
 
 const industries = [
   "体彩店店主", "装修设计", "口腔牙科", "美容美业", "教育培训", "法律咨询",
@@ -51,8 +138,19 @@ export function InputPanel({
   isLoading,
   error
 }: InputPanelProps) {
+  const [sectionState, setSectionState] = useState<SectionState>(emptySections)
+
+  useEffect(() => {
+    const assembled = assembleDocument(sectionState)
+    setFormData((prev) => (prev.document === assembled ? prev : { ...prev, document: assembled }))
+  }, [sectionState, setFormData])
+
   const charCount = formData.document.length
   const isValid = charCount >= 30
+
+  const updateSection = (key: SectionKey, value: string) => {
+    setSectionState((prev) => ({ ...prev, [key]: value }))
+  }
 
   const toggleStyle = (style: string) => {
     setFormData(prev => ({
@@ -70,38 +168,38 @@ export function InputPanel({
         <h3 className="font-semibold text-foreground">文案生成配置</h3>
       </div>
 
-      {/* Document Input */}
-      <div className="space-y-2">
-        <Label htmlFor="document" className="text-foreground">
-          行业文案撰写文档 <span className="text-destructive">*</span>
-        </Label>
-        <Textarea
-          id="document"
-          value={formData.document}
-          onChange={(e) => setFormData(prev => ({ ...prev, document: e.target.value }))}
-          placeholder={`请粘贴你的行业文案撰写文档。
-
-可以包含：
-1. 你的业务介绍
-2. 目标客户是谁
-3. 客户痛点是什么
-4. 产品/服务优势
-5. 成交话术或案例
-6. 希望生成的文案方向
-
-示例：
-我是做装修设计的，主要服务准备装修新房的业主。
-客户担心预算超支、防水电路做不好、入住后问题多……
-我们的优势是施工透明、材料可查、工地全程巡检……
-希望生成适合抖音口播的获客文案。`}
-          className="min-h-[200px] bg-secondary border-border focus:border-primary focus:ring-primary/20 resize-none text-foreground placeholder:text-muted-foreground"
-          disabled={isLoading}
-        />
-        <div className="flex items-center justify-between text-sm">
-          <span className={`${charCount < 30 ? "text-warning" : "text-muted-foreground"}`}>
+      {/* Structured Document Sections */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <Label className="text-foreground">
+            行业文案撰写文档 <span className="text-destructive">*</span>
+          </Label>
+          <span className={`text-sm ${charCount < 30 ? "text-warning" : "text-muted-foreground"}`}>
             {charCount < 30 && "至少输入 30 字 · "}
             已输入 {charCount} 字
           </span>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {sections.map((section) => (
+            <div
+              key={section.key}
+              className={`space-y-2 ${section.fullWidth ? "md:col-span-2" : ""}`}
+            >
+              <Label htmlFor={`section-${section.key}`} className="text-foreground text-sm">
+                {section.label}
+              </Label>
+              <Textarea
+                id={`section-${section.key}`}
+                rows={section.rows}
+                value={sectionState[section.key]}
+                onChange={(e) => updateSection(section.key, e.target.value)}
+                placeholder={section.placeholder}
+                disabled={isLoading}
+                className="bg-secondary border-border focus:border-primary focus:ring-primary/20 resize-none text-foreground placeholder:text-muted-foreground"
+              />
+            </div>
+          ))}
         </div>
       </div>
 
