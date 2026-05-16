@@ -38,6 +38,12 @@ export function ProcessPanel({ currentStep, progress, isComplete, isError }: Pro
   const [logs, setLogs] = useState<string[]>([])
 
   useEffect(() => {
+    if (!isComplete && !isError && currentStep === 0 && progress === 0) {
+      setLogs([logMessages[0]])
+    }
+  }, [currentStep, progress, isComplete, isError])
+
+  useEffect(() => {
     if (isComplete || isError) return
 
     const interval = setInterval(() => {
@@ -46,7 +52,7 @@ export function ProcessPanel({ currentStep, progress, isComplete, isError }: Pro
         const nextIndex = prev.length
         return [...prev, logMessages[nextIndex]]
       })
-    }, 800)
+    }, 5000)
 
     return () => clearInterval(interval)
   }, [isComplete, isError])

@@ -1,5 +1,6 @@
 "use client"
 
+import type { Dispatch, SetStateAction } from "react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
@@ -11,10 +12,10 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Zap, AlertCircle, FileText } from "lucide-react"
-import type { FormData } from "@/app/page"
+import type { GenerateRequest } from "@/lib/ai-copy"
 
 const industries = [
-  "装修设计", "口腔牙科", "美容美业", "教育培训", "法律咨询",
+  "体彩店店主", "装修设计", "口腔牙科", "美容美业", "教育培训", "法律咨询",
   "房产中介", "招商加盟", "家政服务", "企业服务", "本地生活",
   "电商带货", "知识付费", "医疗健康", "汽车服务", "财税服务", "其他行业"
 ]
@@ -36,8 +37,8 @@ const wordCounts = [
 const counts = [1, 2, 3]
 
 interface InputPanelProps {
-  formData: FormData
-  setFormData: React.Dispatch<React.SetStateAction<FormData>>
+  formData: GenerateRequest
+  setFormData: Dispatch<SetStateAction<GenerateRequest>>
   onGenerate: () => void
   isLoading: boolean
   error: string | null

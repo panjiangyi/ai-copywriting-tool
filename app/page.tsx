@@ -7,106 +7,53 @@ import { InputPanel } from "@/components/ai-copy/input-panel"
 import { ProcessPanel } from "@/components/ai-copy/process-panel"
 import { MetricsPanel } from "@/components/ai-copy/metrics-panel"
 import { ResultPanel } from "@/components/ai-copy/result-panel"
+import { generateCopy } from "@/lib/generate-client"
+import type { GenerateRequest, GenerateResponse, GenerateState } from "@/lib/ai-copy"
 
-export type GenerateState = "idle" | "editing" | "loading" | "success" | "error"
+const EXPECTED_GENERATION_MS = 60_000
 
-export interface GenerateResult {
-  requestId: string
-  matchScore: number
-  totalWords: number
-  titleCount: number
-  duration: number
-  titles: string[]
-  content: string
-  structure: {
-    hook: string
-    logic: string
-    sections: string[]
+function getLoadingProgress(elapsedMs: number) {
+  const checkpoints = [
+    { time: 0, progress: 3 },
+    { time: 8_000, progress: 16 },
+    { time: 18_000, progress: 36 },
+    { time: 32_000, progress: 58 },
+    { time: 52_000, progress: 88 },
+    { time: EXPECTED_GENERATION_MS, progress: 97 },
+  ]
+
+  for (let index = 1; index < checkpoints.length; index++) {
+    const previous = checkpoints[index - 1]
+    const next = checkpoints[index]
+
+    if (elapsedMs <= next.time) {
+      const segmentProgress = (elapsedMs - previous.time) / (next.time - previous.time)
+      return previous.progress + (next.progress - previous.progress) * segmentProgress
+    }
   }
-  suggestions: string[]
+
+  const overtimeMs = elapsedMs - EXPECTED_GENERATION_MS
+  return Math.min(98.5, 97 + overtimeMs / 30_000)
 }
 
-export interface FormData {
-  document: string
-  industry: string
-  usage: string
-  styles: string[]
-  wordCount: string
-  count: number
-}
-
-// Mock API response for demo
-const mockGenerateResponse = async (formData: FormData): Promise<GenerateResult> => {
-  await new Promise(resolve => setTimeout(resolve, 8000))
-  
-  return {
-    requestId: `copy_${Date.now()}`,
-    matchScore: 97,
-    totalWords: 430,
-    titleCount: 5,
-    duration: 8.6,
-    titles: [
-      "装修花了钱还糟心？问题通常出在这里",
-      "真正懂装修的人，都会把钱花在看不见的地方",
-      "新房装修，这3个地方千万别省",
-      "装修最怕的不是贵，而是这些地方没做好",
-      "住进去才后悔的装修坑，很多人一开始就错了"
-    ],
-    content: `是不是装修花了不少钱，住进去却全是糟心事？
-
-装修不是哪里好看就往哪砸，而是要把钱花在你看不见的地方。
-
-很多人装修的时候，总想着瓷砖要好看、柜子要漂亮、灯具要高端。结果住进去才发现：
-
-水管漏水、电路跳闸、防水没做好楼下邻居天天来敲门……
-
-这些才是装修最该花钱的地方：
-
-第一，水电工程。
-水电是装修的生命线，一旦出问题，砸墙重做，花的钱是当初的三倍不止。
-
-第二，防水处理。
-卫生间、厨房、阳台，这些地方防水没做好，楼下漏水你赔钱，自己家墙面发霉脱皮。
-
-第三，隐蔽工程验收。
-每一个施工节点都要有人把关，否则等贴了砖、刷了漆，再想改就晚了。
-
-我们做了12年装修，最清楚哪些地方能省、哪些地方绝对不能省。
-
-全程透明报价，材料可查可验，工地巡检到位。
-
-装修不踩坑，从选对人开始。
-
-想了解更多，私信"装修"，我发你一份避坑清单。`,
-    structure: {
-      hook: "痛点提问式开场",
-      logic: "痛点刺激 → 认知反转 → 专业建议 → 分点展开 → 安心结果",
-      sections: [
-        "用户装修后悔场景",
-        "错误装修认知",
-        "三项不能省的关键工程",
-        "专业服务承诺",
-        "结果价值"
-      ]
-    },
-    suggestions: [
-      "前3秒建议用强痛点开场，提高完播率",
-      "可以加入真实工地案例增强信任",
-      "结尾建议加入私信关键词引导"
-    ]
-  }
+function getLoadingStep(elapsedMs: number) {
+  if (elapsedMs < 8_000) return 0
+  if (elapsedMs < 18_000) return 1
+  if (elapsedMs < 32_000) return 2
+  if (elapsedMs < 52_000) return 3
+  return 4
 }
 
 export default function Home() {
   const [state, setState] = useState<GenerateState>("idle")
-  const [result, setResult] = useState<GenerateResult | null>(null)
+  const [result, setResult] = useState<GenerateResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [currentStep, setCurrentStep] = useState(0)
   const [progress, setProgress] = useState(0)
   
-  const [formData, setFormData] = useState<FormData>({
+  const [formData, setFormData] = useState<GenerateRequest>({
     document: "",
-    industry: "装修设计",
+    industry: "体彩店店主",
     usage: "短视频口播",
     styles: ["专业", "成交导向", "口语化"],
     wordCount: "400 字左右",
@@ -125,41 +72,23 @@ export default function Home() {
     setProgress(0)
     setResult(null)
 
-    // Simulate step progression
-    const stepIntervals = [1000, 2000, 2000, 2000, 1000]
-    let currentStepLocal = 0
-    
-    const stepTimer = setInterval(() => {
-      if (currentStepLocal < 4) {
-        currentStepLocal++
-        setCurrentStep(currentStepLocal)
-      }
-    }, stepIntervals[currentStepLocal] || 2000)
-
-    // Simulate progress
+    const startedAt = Date.now()
     const progressTimer = setInterval(() => {
-      setProgress(prev => {
-        if (prev >= 95) return prev
-        if (prev < 15) return prev + 3
-        if (prev < 38) return prev + 2
-        if (prev < 68) return prev + 1.5
-        if (prev < 88) return prev + 0.8
-        return prev + 0.3
-      })
-    }, 100)
+      const elapsedMs = Date.now() - startedAt
+      setCurrentStep(getLoadingStep(elapsedMs))
+      setProgress(getLoadingProgress(elapsedMs))
+    }, 250)
 
     try {
-      const response = await mockGenerateResponse(formData)
-      clearInterval(stepTimer)
+      const response = await generateCopy(formData)
       clearInterval(progressTimer)
       setCurrentStep(5)
       setProgress(100)
       setResult(response)
       setState("success")
     } catch (err) {
-      clearInterval(stepTimer)
       clearInterval(progressTimer)
-      setError("AI 服务暂时繁忙，请稍后再试")
+      setError(err instanceof Error ? err.message : "AI 服务暂时繁忙，请稍后再试")
       setState("error")
     }
   }, [formData])
